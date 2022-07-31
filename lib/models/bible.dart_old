@@ -1,0 +1,164 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:starr/services/globals.dart';
+
+///
+/// Bible Class
+///
+class Bible {
+  late String version;
+  late String name;
+  late List<Book> books;
+
+  ///
+  /// Instantiate bible from map
+  ///
+  Bible.fromMap(Map<String, dynamic> map) {
+    version = map["XMLBIBLE"]["_bibleversion"];
+    name = map["XMLBIBLE"]["_biblename"];
+    List _bookMaps = map["XMLBIBLE"]["BIBLEBOOK"];
+    List<Book> _books = [];
+    _bookMaps.forEach((bookMap) {
+      Book _book = Book.fromMap(bookMap);
+      _books.add(_book);
+    });
+
+    books = _books;
+  }
+}
+
+///
+/// Bible Book Class
+///
+class Book {
+  late String name;
+  late int number;
+  late List<Chapter> chapters;
+
+  ///
+  /// Instantiate book from map
+  ///
+  Book.fromMap(Map<String, dynamic> map) {
+    name = map["_bname"];
+    number = int.parse(map["_bnumber"].toString());
+    List _chapterMaps = map["CHAPTER"];
+    List<Chapter> _chapters = [];
+    _chapterMaps.forEach((chapterMap) {
+      Chapter _chapter = Chapter.fromMap(chapterMap);
+      _chapters.add(_chapter);
+    });
+
+    chapters = _chapters;
+  }
+
+  ///
+  /// check whether book is OT
+  ///
+  bool isOldTestament() {
+    return number <= 39;
+  }
+
+  ///
+  /// check whether book is NT
+  ///
+  bool isNewTestament() {
+    return number > 39;
+  }
+}
+
+///
+/// Bible Book Chapter Class
+///
+class Chapter {
+  late int number;
+  late List<Verse> verses;
+
+  ///
+  /// Instantiate Chapter from map
+  ///
+  Chapter.fromMap(Map<String, dynamic> map) {
+    number = int.parse(map["_cnumber"].toString());
+    List _verseMaps = map["VERS"];
+    List<Verse> _verses = [];
+    _verseMaps.forEach((_verseMap) {
+      Verse _verse = Verse.fromMap(_verseMap);
+      _verses.add(_verse);
+    });
+
+    verses = _verses;
+  }
+}
+
+///
+/// Bible Book Chapter Verse Class
+///
+class Verse {
+  late int number;
+  late String text;
+  // late String chapterName;
+  // late String bookName;
+
+  ///
+  /// Instantiate verse from map
+  ///
+  Verse.fromMap(Map<String, dynamic> map) {
+    number = int.parse(map["_vnumber"].toString());
+    // chapterName = map["_"].toString();
+    // bookName = map["_vnumber"].toString();
+    if (map["__text"] == null) {
+      text = "--";
+    } else {
+      text = map["__text"];
+    }
+  }
+}
+
+///
+/// Provider Class
+///
+class BibleProvider with ChangeNotifier {
+  late Bible currentBible;
+  late List<Bible> biblesList;
+
+  static const CURRENT_BIBLE_STRING = "current_bible_string";
+
+  Future<bool> getBibles() async {
+    List<Bible> _biblesList = [];
+
+    await Future.forEach(versionsList, (String element) async {
+      Bible bible = await getBible(element);
+      _biblesList.add(bible);
+    });
+
+    biblesList = _biblesList;
+
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? _currentVersion = prefs.getString(CURRENT_BIBLE_STRING);
+
+    if (_currentVersion == null) {
+      await setCurrentBible(biblesList.first.version);
+    } else {
+      await setCurrentBible(_currentVersion);
+    }
+
+    notifyListeners();
+    return true;
+  }
+
+  Future<Bible> getBible(String version) async {
+    String dataStr = await rootBundle.loadString("assets/json/$version.json");
+    Map<String, dynamic> data = jsonDecode(dataStr);
+    return Bible.fromMap(data);
+  }
+
+  Future<void> setCurrentBible(String version) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(CURRENT_BIBLE_STRING, version);
+    currentBible =
+        biblesList.firstWhere((element) => element.version == version);
+    notifyListeners();
+  }
+}
